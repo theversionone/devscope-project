@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "devscope": {
+      "command": "node",
+      "args": ["C:/Users/Ben/Desktop/devscope-project/dist/index.js"],
+      "env": {
+        "GITHUB_TOKEN": "your_github_personal_access_token_here",
+        "STACKOVERFLOW_KEY": "your_stackoverflow_api_key_here"
+      }
+    }
+  }
+}
