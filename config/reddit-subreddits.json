@@ -14,6 +14,9 @@
     "coding"
   ],
   "techMapping": {
+    "next.js": ["nextjs", "reactjs", "vercel"],
+    "nextjs": ["nextjs", "reactjs", "vercel"],
+    "next": ["nextjs", "reactjs", "vercel"],
     "react": ["reactjs", "nextjs", "react_native"],
     "typescript": ["typescript", "javascript"],
     "javascript": ["javascript", "node", "webdev"],
