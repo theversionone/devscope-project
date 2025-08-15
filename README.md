@@ -1,10 +1,16 @@
+<div align="center">
+
+![DevScope Logo](./assets/devscopelogo.png)
+
 # DevScope MCP Server - Smart Context Gatherer
 
 A Model Context Protocol (MCP) server that provides AI coding tools with comprehensive, up-to-date context from multiple developer sources.
 
+</div>
+
 ## Features
 
-- **Multi-Source Search**: Searches Stack Overflow and GitHub simultaneously
+- **Multi-Source Search**: Searches Stack Overflow, GitHub, and Reddit simultaneously
 - **Intelligent Ranking**: Weighted scoring based on relevance, recency, and community signals
 - **Rate Limiting**: Respects API limits with intelligent throttling
 - **Caching**: In-memory LRU cache for improved performance
@@ -77,7 +83,7 @@ Once configured, the MCP server provides a `gather_developer_context` tool that 
 ```typescript
 gather_developer_context({
   query: "how to handle rate limiting in Node.js",
-  sources: ["stackoverflow", "github"],
+  sources: ["stackoverflow", "github", "reddit"],
   maxResults: 5,
   depth: "quick"
 })
@@ -86,7 +92,7 @@ gather_developer_context({
 ### Parameters
 
 - `query` (required): The search query or question
-- `sources` (optional): Array of sources to search. Default: `["stackoverflow", "github"]`
+- `sources` (optional): Array of sources to search. Default: `["stackoverflow", "github", "reddit"]`
 - `maxResults` (optional): Maximum results per source. Default: `5`
 - `depth` (optional): Search depth - `"quick"` or `"thorough"`. Default: `"quick"`
 
@@ -119,7 +125,8 @@ src/
 │   └── gatherContext.ts     # Main tool implementation
 ├── adapters/
 │   ├── stackoverflow.ts     # Stack Overflow API adapter
-│   └── github.ts           # GitHub GraphQL adapter
+│   ├── github-rest.ts      # GitHub REST API adapter
+│   └── reddit.ts           # Reddit API adapter
 ├── core/
 │   ├── ranker.ts           # Result ranking logic
 │   └── aggregator.ts       # Result aggregation
