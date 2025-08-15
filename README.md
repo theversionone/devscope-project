@@ -1,6 +1,6 @@
 <div align="center">
 
-![DevScope Logo](./assets/devscopelogo.png)
+<img src="./assets/devscopelogo.png" alt="DevScope Logo" width="200" height="200">
 
 # DevScope MCP Server - Smart Context Gatherer
 
