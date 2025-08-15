@@ -6,6 +6,7 @@ import { ResultRanker } from '../core/ranker.js';
 import { ResultAggregator } from '../core/aggregator.js';
 import { LRUCache } from '../utils/cache.js';
 import { withFallback } from '../utils/errorHandler.js';
+import { QueryAnalyzer } from '../core/queryAnalyzer.js';
 
 // Initialize cache
 const cache = new LRUCache<GatherContextResult>(
@@ -17,6 +18,9 @@ const cache = new LRUCache<GatherContextResult>(
 const stackOverflowAdapter = new StackOverflowAdapter();
 const githubAdapter = new GitHubRestAdapter();
 let redditAdapter: RedditAdapter | null = null;
+
+// Initialize query analyzer
+const queryAnalyzer = new QueryAnalyzer();
 
 function getRedditAdapter(): RedditAdapter {
   if (!redditAdapter) {
@@ -48,6 +52,10 @@ export async function gatherDeveloperContext(
   }
 
   console.log('Gathering context for query:', options.query);
+  
+  // Analyze the query to determine search strategy
+  const analysis = queryAnalyzer.analyze(options.query);
+  console.log(`Query analysis - Problem type: ${analysis.problemType}, Technologies: ${analysis.technologies.join(', ')}, Specificity: ${analysis.specificity}`);
 
   // Determine which sources to search
   const sources = options.sources || ['stackoverflow', 'github', 'reddit'];
@@ -59,7 +67,7 @@ export async function gatherDeveloperContext(
 
   if (sources.includes('stackoverflow')) {
     searchPromises.push(
-      stackOverflowAdapter.search(options.query, maxResults)
+      stackOverflowAdapter.search(options.query, maxResults, analysis.searchStrategies.stackoverflow, analysis.problemType)
         .then(results => {
           console.log(`Stack Overflow returned ${results.length} results`);
           return results;
@@ -75,7 +83,7 @@ export async function gatherDeveloperContext(
   if (sources.includes('github')) {
     searchPromises.push(
       withFallback(
-        () => githubAdapter.search(options.query, maxResults),
+        () => githubAdapter.search(options.query, maxResults, analysis.searchStrategies.github, analysis.problemType),
         [],
         'GitHub'
       ).catch(error => {
@@ -88,7 +96,7 @@ export async function gatherDeveloperContext(
 
   if (sources.includes('reddit')) {
     searchPromises.push(
-      getRedditAdapter().search(options.query, maxResults)
+      getRedditAdapter().search(options.query, maxResults, analysis.searchStrategies.reddit, analysis.problemType)
         .then(results => {
           console.log(`Reddit returned ${results.length} results`);
           return results;
@@ -123,8 +131,8 @@ export async function gatherDeveloperContext(
     return emptyResult;
   }
 
-  // Rank results
-  const ranker = new ResultRanker(options.query);
+  // Rank results with problem type awareness
+  const ranker = new ResultRanker(options.query, analysis.problemType);
   const rankedResults = ranker.rankResults(allResults);
 
   // Aggregate results
@@ -136,8 +144,16 @@ export async function gatherDeveloperContext(
     incompleteSources.length > 0 ? incompleteSources : undefined
   );
 
-  // Cache the result
-  cache.set(cacheKey, result);
+  // Cache the result with analysis information
+  const enhancedResult = {
+    ...result,
+    queryAnalysis: {
+      problemType: analysis.problemType,
+      technologies: analysis.technologies,
+      specificity: analysis.specificity
+    }
+  };
+  cache.set(cacheKey, enhancedResult);
 
-  return result;
+  return enhancedResult;
 }

@@ -48,6 +48,11 @@ export interface GatherContextResult {
     cacheHits: number;
     incompleteSources?: string[];
   };
+  queryAnalysis?: {
+    problemType: string;
+    technologies: string[];
+    specificity: string;
+  };
 }
 
 export interface Citation {

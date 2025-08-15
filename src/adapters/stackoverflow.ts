@@ -2,6 +2,7 @@ import axios from 'axios';
 import { NormalizedResult, CodeSnippet } from '../types/index.js';
 import { stackOverflowLimiter, withRetry } from '../utils/rateLimiter.js';
 import { handleAPIError } from '../utils/errorHandler.js';
+import { StackOverflowSearchStrategy, ProblemType } from '../core/queryAnalyzer.js';
 
 const BASE_URL = 'https://api.stackexchange.com/2.3';
 
@@ -43,10 +44,10 @@ export class StackOverflowAdapter {
     this.apiKey = process.env.STACKOVERFLOW_KEY;
   }
 
-  async search(query: string, maxResults = 5): Promise<NormalizedResult[]> {
+  async search(query: string, maxResults = 5, strategy?: StackOverflowSearchStrategy, problemType?: ProblemType): Promise<NormalizedResult[]> {
     try {
       return await stackOverflowLimiter.schedule(() =>
-        withRetry(() => this.performSearch(query, maxResults))
+        withRetry(() => this.performSearch(query, maxResults, strategy, problemType))
       );
     } catch (error) {
       console.error('Stack Overflow search error:', error);
@@ -59,7 +60,7 @@ export class StackOverflowAdapter {
     }
   }
 
-  private async performSearch(query: string, maxResults: number): Promise<NormalizedResult[]> {
+  private async performSearch(query: string, maxResults: number, _strategy?: StackOverflowSearchStrategy, _problemType?: ProblemType): Promise<NormalizedResult[]> {
     const params: any = {
       q: query,
       order: 'desc',

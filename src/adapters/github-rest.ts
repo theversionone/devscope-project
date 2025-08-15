@@ -2,6 +2,17 @@ import axios from 'axios';
 import { NormalizedResult, CodeSnippet } from '../types/index.js';
 import { githubLimiter, withRetry } from '../utils/rateLimiter.js';
 import { handleAPIError } from '../utils/errorHandler.js';
+import { GitHubSearchStrategy, ProblemType } from '../core/queryAnalyzer.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load filter configuration
+const filtersPath = path.join(__dirname, '../config/filters.json');
+const filters = JSON.parse(fs.readFileSync(filtersPath, 'utf-8'));
 
 const BASE_URL = 'https://api.github.com';
 
@@ -49,10 +60,10 @@ export class GitHubRestAdapter {
     }
   }
 
-  async search(query: string, maxResults = 5): Promise<NormalizedResult[]> {
+  async search(query: string, maxResults = 5, strategy?: GitHubSearchStrategy, problemType?: ProblemType): Promise<NormalizedResult[]> {
     try {
       return await githubLimiter.schedule(() =>
-        withRetry(() => this.performSearch(query, maxResults))
+        withRetry(() => this.performSearch(query, maxResults, strategy, problemType))
       );
     } catch (error) {
       handleAPIError(error, 'GitHub');
@@ -60,17 +71,18 @@ export class GitHubRestAdapter {
     }
   }
 
-  private async performSearch(query: string, maxResults: number): Promise<NormalizedResult[]> {
+  private async performSearch(query: string, maxResults: number, strategy?: GitHubSearchStrategy, problemType?: ProblemType): Promise<NormalizedResult[]> {
     try {
-      // Search for issues and pull requests
-      const searchQuery = `${query} in:title,body is:public`;
+      // Build enhanced search query with filtering
+      const searchQuery = this.buildSearchQuery(query, strategy, problemType);
+      
       const response = await axios.get(`${BASE_URL}/search/issues`, {
         headers: this.headers,
         params: {
           q: searchQuery,
-          sort: 'reactions',
+          sort: problemType === ProblemType.BUG_REPORT ? 'updated' : 'reactions',
           order: 'desc',
-          per_page: maxResults,
+          per_page: Math.min(maxResults * 2, 50), // Get more to filter
         },
       });
 
@@ -95,14 +107,80 @@ export class GitHubRestAdapter {
         }
       }
 
-      return this.normalizeResults(issues, repoCache);
+      // Filter results based on quality criteria
+      const filteredIssues = this.filterResults(issues, problemType);
+      return this.normalizeResults(filteredIssues.slice(0, maxResults), repoCache, problemType);
     } catch (error) {
       console.error('GitHub search error:', error);
       throw error;
     }
   }
 
-  private normalizeResults(issues: GitHubIssue[], repoCache: Map<string, GitHubRepo>): NormalizedResult[] {
+  private buildSearchQuery(query: string, strategy?: GitHubSearchStrategy, _problemType?: ProblemType): string {
+    let searchQuery = `${query} in:title,body is:public`;
+    
+    // Add strategy-specific query modifications
+    if (strategy?.query && strategy.query !== query) {
+      searchQuery = `${strategy.query} in:title,body is:public`;
+    }
+    
+    // Add exclusion patterns
+    const excludePatterns = strategy?.excludePatterns || [];
+    const filterExclusions = [
+      ...filters.github.excludePatterns.botAccounts.map((bot: string) => `-author:${bot}`),
+      ...filters.github.excludePatterns.labels.map((label: string) => `-label:${label}`)
+    ];
+    
+    const allExclusions = [...excludePatterns, ...filterExclusions];
+    if (allExclusions.length > 0) {
+      searchQuery += ` ${allExclusions.join(' ')}`;
+    }
+    
+    // Add type prioritization
+    const prioritizeTypes = strategy?.prioritizeTypes || ['type:issue'];
+    if (prioritizeTypes.length > 0) {
+      searchQuery += ` (${prioritizeTypes.join(' OR ')})`;
+    }
+    
+    return searchQuery;
+  }
+  
+  private filterResults(issues: GitHubIssue[], problemType?: ProblemType): GitHubIssue[] {
+    return issues.filter(issue => {
+      // Filter out bot-created issues by title patterns
+      const titleFilters = filters.github.excludePatterns.titlePatterns;
+      for (const pattern of titleFilters) {
+        if (new RegExp(pattern).test(issue.title)) {
+          return false;
+        }
+      }
+      
+      // Apply quality thresholds
+      const thresholds = problemType ? 
+        filters.github.qualityThresholds[problemType] || filters.github.qualityThresholds :
+        filters.github.qualityThresholds;
+      
+      if (issue.comments < (thresholds.minComments || 1)) {
+        return false;
+      }
+      
+      if ((issue.reactions?.total_count || 0) < (thresholds.minReactions || 0)) {
+        return false;
+      }
+      
+      // Filter out very old issues for certain problem types
+      if (problemType === ProblemType.BUG_REPORT || problemType === ProblemType.COMPATIBILITY) {
+        const daysSinceUpdate = (Date.now() - new Date(issue.updated_at).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceUpdate > 365) {
+          return false;
+        }
+      }
+      
+      return true;
+    });
+  }
+
+  private normalizeResults(issues: GitHubIssue[], repoCache: Map<string, GitHubRepo>, problemType?: ProblemType): NormalizedResult[] {
     return issues.map(issue => {
       const repo = repoCache.get(issue.repository_url);
       const content = this.buildContent(issue, repo);
@@ -116,7 +194,7 @@ export class GitHubRestAdapter {
         author: issue.user?.login || 'Unknown',
         createdAt: new Date(issue.created_at),
         updatedAt: new Date(issue.updated_at),
-        score: this.calculateScore(issue, repo),
+        score: this.calculateScore(issue, repo, problemType),
         content,
         codeSnippets,
         tags: issue.labels?.map(label => label.name) || [],
@@ -171,25 +249,69 @@ export class GitHubRestAdapter {
     return versionLabel?.name;
   }
 
-  private calculateScore(issue: GitHubIssue, repo?: GitHubRepo): number {
+  private calculateScore(issue: GitHubIssue, repo?: GitHubRepo, problemType?: ProblemType): number {
     let score = 0;
 
-    // Repository stars contribute to score
+    // Repository quality scoring
     if (repo) {
-      score += Math.min(repo.stargazers_count / 100, 50);
+      const stars = repo.stargazers_count;
+      if (stars > 10000) {
+        score += filters.github.repositoryBoosts.official;
+      } else if (stars > 1000) {
+        score += filters.github.repositoryBoosts.highStars;
+      } else if (stars > 100) {
+        score += filters.github.repositoryBoosts.wellMaintained;
+      }
+      
+      // Base score from stars (capped)
+      score += Math.min(stars / 100, 30);
     }
 
-    // Comments indicate engagement
-    score += Math.min(issue.comments * 2, 20);
+    // Engagement scoring
+    score += Math.min(issue.comments * 3, 30);
 
-    // Reactions
+    // Reactions with higher weight
     if (issue.reactions) {
-      score += issue.reactions.total_count;
+      score += Math.min(issue.reactions.total_count * 2, 20);
+      score += Math.min(issue.reactions['+1'] * 3, 15);
     }
 
-    // Closed issues often mean resolved
+    // State-based scoring with problem type awareness
     if (issue.state === 'closed') {
+      if (problemType === ProblemType.BUG_REPORT) {
+        score += 15; // Closed bugs are likely resolved
+      } else if (problemType === ProblemType.CONFIGURATION) {
+        score += 10; // Closed config issues might have solutions
+      } else {
+        score += 5;
+      }
+    } else {
+      // Open issues might be more relevant for ongoing problems
+      if (problemType === ProblemType.BUG_REPORT) {
+        score += 5;
+      }
+    }
+
+    // Recency bonus for certain problem types
+    const daysSinceUpdate = (Date.now() - new Date(issue.updated_at).getTime()) / (1000 * 60 * 60 * 24);
+    if (problemType === ProblemType.BUG_REPORT && daysSinceUpdate < 30) {
       score += 10;
+    } else if (problemType === ProblemType.COMPATIBILITY && daysSinceUpdate < 90) {
+      score += 8;
+    }
+
+    // Label-based scoring
+    if (issue.labels) {
+      const labelNames = issue.labels.map(l => l.name.toLowerCase());
+      if (labelNames.includes('bug') && problemType === ProblemType.BUG_REPORT) {
+        score += 10;
+      }
+      if (labelNames.includes('question') && problemType === ProblemType.CONFIGURATION) {
+        score += 8;
+      }
+      if (labelNames.includes('performance') && problemType === ProblemType.PERFORMANCE) {
+        score += 10;
+      }
     }
 
     return Math.round(score);

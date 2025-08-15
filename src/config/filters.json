@@ -1,0 +1,195 @@
+{
+  "github": {
+    "excludePatterns": {
+      "botAccounts": [
+        "dependabot",
+        "renovate[bot]",
+        "github-actions[bot]",
+        "codecov[bot]",
+        "greenkeeper[bot]",
+        "snyk-bot"
+      ],
+      "labels": [
+        "dependencies",
+        "security",
+        "chore"
+      ],
+      "titlePatterns": [
+        "^Bump ",
+        "^Update ",
+        "^chore\\(",
+        "^build\\(",
+        "^ci\\(",
+        "\\[Snyk\\]",
+        "\\[Security\\]"
+      ]
+    },
+    "prioritizeTypes": {
+      "bug": ["issue", "discussion"],
+      "configuration": ["issue", "discussion"],
+      "performance": ["issue", "discussion"],
+      "compatibility": ["issue", "discussion"],
+      "practice": ["discussion", "issue"]
+    },
+    "qualityThresholds": {
+      "minStars": 10,
+      "minComments": 1,
+      "minReactions": 0,
+      "bug": {
+        "minComments": 2,
+        "minReactions": 1
+      },
+      "configuration": {
+        "minComments": 1,
+        "minReactions": 0
+      }
+    },
+    "repositoryBoosts": {
+      "official": 50,
+      "highStars": 30,
+      "wellMaintained": 20
+    }
+  },
+  "stackoverflow": {
+    "qualityThresholds": {
+      "minScore": 1,
+      "minAnswers": 1,
+      "bug": {
+        "minScore": 2,
+        "preferAccepted": true
+      },
+      "configuration": {
+        "minScore": 1,
+        "requireAccepted": true
+      },
+      "practice": {
+        "minScore": 5,
+        "preferAccepted": true
+      }
+    },
+    "recencyBoosts": {
+      "days": {
+        "30": 20,
+        "90": 15,
+        "365": 10,
+        "730": 5
+      }
+    },
+    "tagPriority": {
+      "high": ["javascript", "typescript", "react", "node.js", "python"],
+      "medium": ["html", "css", "vue.js", "angular", "django"],
+      "low": ["beginner", "homework"]
+    }
+  },
+  "reddit": {
+    "excludeFlairs": [
+      "Showcase",
+      "Career",
+      "Show and Tell",
+      "Showoff Saturday",
+      "Daily Discussion",
+      "Weekly Discussion",
+      "Beginner Question",
+      "Rant",
+      "Meme",
+      "Humor",
+      "Off Topic"
+    ],
+    "qualityThresholds": {
+      "minScore": 10,
+      "minComments": 5,
+      "minUpvoteRatio": 0.75,
+      "maxAgeMonths": 18,
+      "bug": {
+        "minScore": 5,
+        "minComments": 3,
+        "minUpvoteRatio": 0.7
+      },
+      "configuration": {
+        "minScore": 8,
+        "minComments": 4,
+        "minUpvoteRatio": 0.8
+      },
+      "practice": {
+        "minScore": 15,
+        "minComments": 8,
+        "minUpvoteRatio": 0.85
+      }
+    },
+    "subredditQuality": {
+      "tier1": ["programming", "webdev", "reactjs", "javascript", "node", "typescript"],
+      "tier2": ["askprogramming", "learnprogramming", "codereview", "frontend"],
+      "tier3": ["coding", "softwaredevelopment", "computerscience"]
+    },
+    "titleFilters": {
+      "exclude": [
+        "^AMA:",
+        "^PSA:",
+        "^LPT:",
+        "career advice",
+        "job interview",
+        "salary",
+        "bootcamp",
+        "self-taught",
+        "getting started",
+        "complete beginner"
+      ]
+    }
+  },
+  "global": {
+    "problemTypeWeights": {
+      "bug": {
+        "recency": 0.4,
+        "community": 0.3,
+        "relevance": 0.3
+      },
+      "configuration": {
+        "recency": 0.2,
+        "community": 0.4,
+        "relevance": 0.4
+      },
+      "performance": {
+        "recency": 0.3,
+        "community": 0.3,
+        "relevance": 0.4
+      },
+      "compatibility": {
+        "recency": 0.5,
+        "community": 0.2,
+        "relevance": 0.3
+      },
+      "practice": {
+        "recency": 0.1,
+        "community": 0.5,
+        "relevance": 0.4
+      }
+    },
+    "sourceWeights": {
+      "bug": {
+        "github": 0.5,
+        "stackoverflow": 0.3,
+        "reddit": 0.2
+      },
+      "configuration": {
+        "github": 0.2,
+        "stackoverflow": 0.5,
+        "reddit": 0.3
+      },
+      "performance": {
+        "github": 0.4,
+        "stackoverflow": 0.4,
+        "reddit": 0.2
+      },
+      "compatibility": {
+        "github": 0.6,
+        "stackoverflow": 0.3,
+        "reddit": 0.1
+      },
+      "practice": {
+        "github": 0.1,
+        "stackoverflow": 0.6,
+        "reddit": 0.3
+      }
+    }
+  }
+}

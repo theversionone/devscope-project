@@ -1,10 +1,23 @@
 import { NormalizedResult, RankedResult } from '../types/index.js';
+import { ProblemType } from './queryAnalyzer.js';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load filter configuration
+const filtersPath = path.join(__dirname, '../config/filters.json');
+const filters = JSON.parse(fs.readFileSync(filtersPath, 'utf-8'));
 
 export class ResultRanker {
   private query: string;
+  private problemType?: ProblemType;
 
-  constructor(query: string) {
+  constructor(query: string, problemType?: ProblemType) {
     this.query = query.toLowerCase();
+    this.problemType = problemType;
   }
 
   rankResults(results: NormalizedResult[]): RankedResult[] {
@@ -14,12 +27,15 @@ export class ResultRanker {
       const communityScore = this.calculateCommunityScore(result);
       const sourceScore = this.calculateSourceScore(result);
 
-      // Weighted scoring: 35% relevance, 25% recency, 20% community, 15% accepted, 5% source
+      // Problem-type aware weighted scoring
+      const weights = this.getScoreWeights();
+      const acceptedBonus = this.getAcceptedBonus(result);
+      
       const finalScore = 
-        relevanceScore * 0.35 +
-        recencyScore * 0.25 +
-        communityScore * 0.20 +
-        (result.isAccepted ? 15 : 0) +
+        relevanceScore * weights.relevance +
+        recencyScore * weights.recency +
+        communityScore * weights.community +
+        acceptedBonus +
         sourceScore * 0.05;
 
       return {
@@ -74,7 +90,26 @@ export class ResultRanker {
     const relevantDate = Math.max(created, updated);
     const daysSince = (now - relevantDate) / (1000 * 60 * 60 * 24);
 
-    // Score decreases with age
+    // Problem-type aware recency scoring
+    if (this.problemType === ProblemType.BUG_REPORT || this.problemType === ProblemType.COMPATIBILITY) {
+      // More aggressive recency for bugs and compatibility issues
+      if (daysSince < 7) return 100;
+      if (daysSince < 30) return 85;
+      if (daysSince < 90) return 60;
+      if (daysSince < 180) return 30;
+      if (daysSince < 365) return 15;
+      return 5;
+    } else if (this.problemType === ProblemType.BEST_PRACTICE) {
+      // Best practices can be older and still valuable
+      if (daysSince < 30) return 100;
+      if (daysSince < 180) return 90;
+      if (daysSince < 365) return 80;
+      if (daysSince < 730) return 70;
+      if (daysSince < 1095) return 50; // 3 years
+      return 30;
+    }
+    
+    // Default scoring
     if (daysSince < 7) return 100;
     if (daysSince < 30) return 80;
     if (daysSince < 90) return 60;
@@ -101,10 +136,46 @@ export class ResultRanker {
     return Math.min(score, 100);
   }
 
-  private calculateSourceScore(result: NormalizedResult): number {
-    // Slight preference for Stack Overflow for Q&A-style queries
-    // Slight preference for GitHub for bug/issue-style queries
+  private getScoreWeights(): { relevance: number; recency: number; community: number } {
+    if (!this.problemType) {
+      // Default weights
+      return { relevance: 0.35, recency: 0.25, community: 0.20 };
+    }
     
+    const weights = filters.global.problemTypeWeights[this.problemType];
+    if (weights) {
+      return weights;
+    }
+    
+    // Fallback to default
+    return { relevance: 0.35, recency: 0.25, community: 0.20 };
+  }
+  
+  private getAcceptedBonus(result: NormalizedResult): number {
+    if (!result.isAccepted) {
+      return 0;
+    }
+    
+    // Higher bonus for accepted answers in configuration/practice queries
+    if (this.problemType === ProblemType.CONFIGURATION || this.problemType === ProblemType.BEST_PRACTICE) {
+      return 20;
+    } else if (this.problemType === ProblemType.BUG_REPORT) {
+      return 15;
+    }
+    
+    return 12; // Default bonus
+  }
+
+  private calculateSourceScore(result: NormalizedResult): number {
+    // Problem-type aware source scoring
+    if (this.problemType) {
+      const sourceWeights = filters.global.sourceWeights[this.problemType];
+      if (sourceWeights && sourceWeights[result.source]) {
+        return sourceWeights[result.source] * 100;
+      }
+    }
+    
+    // Fallback to legacy scoring
     const isBugQuery = /bug|issue|error|fix|problem/i.test(this.query);
     const isHowToQuery = /how to|how do|what is|explain/i.test(this.query);
 
@@ -114,7 +185,6 @@ export class ResultRanker {
       return 100;
     }
 
-    // Default equal weight
     return 50;
   }
 }

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { NormalizedResult, CodeSnippet } from '../types/index.js';
 import { redditLimiter, withRetry } from '../utils/rateLimiter.js';
+import { RedditSearchStrategy, ProblemType } from '../core/queryAnalyzer.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
@@ -11,6 +12,10 @@ const __dirname = path.dirname(__filename);
 // Load subreddit configuration
 const configPath = path.join(__dirname, '../../config/reddit-subreddits.json');
 const subredditConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+
+// Load filter configuration
+const filtersPath = path.join(__dirname, '../config/filters.json');
+const filters = JSON.parse(fs.readFileSync(filtersPath, 'utf-8'));
 
 interface RedditPost {
   id: string;
@@ -51,10 +56,10 @@ export class RedditAdapter {
     this.userAgent = process.env.REDDIT_USER_AGENT || 'DevScope-MCP-Server/1.0';
   }
 
-  async search(query: string, maxResults = 5): Promise<NormalizedResult[]> {
+  async search(query: string, maxResults = 5, strategy?: RedditSearchStrategy, problemType?: ProblemType): Promise<NormalizedResult[]> {
     try {
       return await redditLimiter.schedule(() =>
-        withRetry(() => this.performSearch(query, maxResults))
+        withRetry(() => this.performSearch(query, maxResults, strategy, problemType))
       );
     } catch (error) {
       console.error('Reddit search error:', error);
@@ -62,9 +67,9 @@ export class RedditAdapter {
     }
   }
 
-  private async performSearch(query: string, maxResults: number): Promise<NormalizedResult[]> {
-    // Select relevant subreddits based on the query
-    const subreddits = this.selectSubreddits(query);
+  private async performSearch(query: string, maxResults: number, strategy?: RedditSearchStrategy, problemType?: ProblemType): Promise<NormalizedResult[]> {
+    // Select relevant subreddits based on strategy or fallback to query analysis
+    const subreddits = strategy?.subreddits || this.selectSubreddits(query);
     console.log(`Searching Reddit in subreddits: ${subreddits.join(', ')}`);
 
     const allResults: NormalizedResult[] = [];
@@ -91,8 +96,18 @@ export class RedditAdapter {
         for (const child of response.data.data.children) {
           const post = child.data;
           
-          // Apply quality filters
-          if (!this.passesQualityFilters(post)) {
+          // Apply enhanced quality filters
+          if (!this.passesQualityFilters(post, strategy, problemType)) {
+            continue;
+          }
+          
+          // Apply flair filtering
+          if (!this.passesFlairFilters(post, strategy)) {
+            continue;
+          }
+          
+          // Apply title filtering
+          if (!this.passesTitleFilters(post)) {
             continue;
           }
 
@@ -123,22 +138,35 @@ export class RedditAdapter {
     const queryLower = query.toLowerCase();
     const selectedSubreddits = new Set<string>();
 
-    // Always include some general programming subreddits
-    const generalSubs = ['programming', 'askprogramming', 'learnprogramming'];
-    generalSubs.forEach(sub => selectedSubreddits.add(sub));
-
-    // Check tech mappings
+    // Prioritize tier 1 subreddits for better quality
+    const tier1Subs = filters.reddit.subredditQuality.tier1;
+    
+    // Check tech mappings with quality prioritization
     for (const [tech, subs] of Object.entries(subredditConfig.techMapping)) {
       if (queryLower.includes(tech.toLowerCase())) {
-        (subs as string[]).forEach(sub => selectedSubreddits.add(sub));
+        // Prioritize tier 1 subreddits from tech mapping
+        (subs as string[]).forEach(sub => {
+          if (tier1Subs.includes(sub)) {
+            selectedSubreddits.add(sub);
+          }
+        });
+        // Add other tech-specific subreddits if we have room
+        if (selectedSubreddits.size < 3) {
+          (subs as string[]).forEach(sub => selectedSubreddits.add(sub));
+        }
       }
     }
 
-    // If we haven't found many specific subreddits, add defaults
+    // If we haven't found enough specific subreddits, add high-quality defaults
+    if (selectedSubreddits.size < 2) {
+      // Add tier 1 subreddits first
+      tier1Subs.slice(0, 3).forEach((sub: string) => selectedSubreddits.add(sub));
+    }
+    
+    // Add tier 2 if we still need more
     if (selectedSubreddits.size < 3) {
-      subredditConfig.defaultSubreddits.slice(0, 5).forEach((sub: string) => 
-        selectedSubreddits.add(sub)
-      );
+      const tier2Subs = filters.reddit.subredditQuality.tier2;
+      tier2Subs.slice(0, 2).forEach((sub: string) => selectedSubreddits.add(sub));
     }
 
     // Limit to maxSubredditsPerQuery
@@ -146,37 +174,79 @@ export class RedditAdapter {
     return Array.from(selectedSubreddits).slice(0, maxSubs);
   }
 
-  private passesQualityFilters(post: RedditPost): boolean {
-    const thresholds = subredditConfig.qualityThresholds;
-
+  private passesQualityFilters(post: RedditPost, strategy?: RedditSearchStrategy, problemType?: ProblemType): boolean {
     // Skip NSFW content
     if (post.over_18) {
       return false;
     }
 
+    // Get problem-type specific thresholds or defaults
+    const baseThresholds = filters.reddit.qualityThresholds;
+    const problemThresholds = problemType ? 
+      baseThresholds[problemType] || baseThresholds :
+      baseThresholds;
+
     // Check minimum score
-    if (post.score < (thresholds.minScore || 5)) {
+    const minScore = strategy?.minEngagement || problemThresholds.minScore || baseThresholds.minScore;
+    if (post.score < minScore) {
       return false;
     }
 
     // Check minimum comments for discussion
-    if (post.num_comments < (thresholds.minComments || 3)) {
+    const minComments = problemThresholds.minComments || baseThresholds.minComments;
+    if (post.num_comments < minComments) {
       return false;
     }
 
     // Check upvote ratio (may not always be available)
-    if (post.upvote_ratio && post.upvote_ratio < (thresholds.minUpvoteRatio || 0.7)) {
+    const minUpvoteRatio = problemThresholds.minUpvoteRatio || baseThresholds.minUpvoteRatio;
+    if (post.upvote_ratio && post.upvote_ratio < minUpvoteRatio) {
       return false;
     }
 
     // Check age (convert months to seconds)
-    const maxAgeSeconds = (thresholds.maxAgeMonths || 24) * 30 * 24 * 60 * 60;
+    const maxAgeMonths = problemThresholds.maxAgeMonths || baseThresholds.maxAgeMonths;
+    const maxAgeSeconds = maxAgeMonths * 30 * 24 * 60 * 60;
     const postAge = Date.now() / 1000 - post.created_utc;
     if (postAge > maxAgeSeconds) {
       return false;
     }
 
+    // Additional quality checks for specific problem types
+    if (problemType === ProblemType.BEST_PRACTICE) {
+      // Best practice discussions should have higher engagement
+      if (post.score < 15 || post.num_comments < 8) {
+        return false;
+      }
+    }
+
     return true;
+  }
+
+  private passesFlairFilters(post: RedditPost, strategy?: RedditSearchStrategy): boolean {
+    if (!post.link_flair_text) {
+      return true; // No flair to filter
+    }
+
+    const excludeFlairs = strategy?.excludeFlairs || filters.reddit.excludeFlairs;
+    const flair = post.link_flair_text.toLowerCase();
+    
+    return !excludeFlairs.some((excludeFlair: string) => 
+      flair.includes(excludeFlair.toLowerCase())
+    );
+  }
+
+  private passesTitleFilters(post: RedditPost): boolean {
+    const excludePatterns = filters.reddit.titleFilters.exclude;
+    const title = post.title.toLowerCase();
+    
+    return !excludePatterns.some((pattern: string) => {
+      try {
+        return new RegExp(pattern, 'i').test(title);
+      } catch {
+        return title.includes(pattern.toLowerCase());
+      }
+    });
   }
 
   private normalizeResult(post: RedditPost): NormalizedResult | null {
@@ -200,7 +270,7 @@ export class RedditAdapter {
         subreddit: post.subreddit,
         upvoteRatio: post.upvote_ratio,
         voteCount: post.score,
-        isAccepted: post.score > 50 && post.upvote_ratio > 0.9, // High quality indicator
+        isAccepted: this.isHighQualityPost(post), // Enhanced quality indicator
       };
     } catch (error) {
       console.error('Error normalizing Reddit post:', error);
@@ -316,5 +386,16 @@ export class RedditAdapter {
     }
 
     return Math.round(score);
+  }
+
+  private isHighQualityPost(post: RedditPost): boolean {
+    // Multiple criteria for high quality posts
+    const hasHighScore = post.score > 50;
+    const hasGoodRatio = post.upvote_ratio > 0.9;
+    const hasGoodEngagement = post.num_comments > 10;
+    const hasModerateScore = post.score > 20 && post.upvote_ratio > 0.8;
+    
+    return (hasHighScore && hasGoodRatio) || 
+           (hasGoodEngagement && hasModerateScore);
   }
 }
