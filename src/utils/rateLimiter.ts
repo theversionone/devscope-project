@@ -17,6 +17,14 @@ export const githubLimiter = new Bottleneck({
   reservoirRefreshInterval: 60 * 60 * 1000, // per hour
 });
 
+export const redditLimiter = new Bottleneck({
+  maxConcurrent: 1,
+  minTime: 1000, // 60 requests per minute = 1000ms between requests
+  reservoir: 60, // 60 requests
+  reservoirRefreshAmount: 60,
+  reservoirRefreshInterval: 60 * 1000, // per minute
+});
+
 // Helper function for exponential backoff
 export async function withRetry<T>(
   fn: () => Promise<T>,

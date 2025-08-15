@@ -15,9 +15,9 @@ dotenv.config();
 // Define the tool input schema
 const GatherContextSchema = z.object({
   query: z.string().describe('The search query or question'),
-  sources: z.array(z.enum(['stackoverflow', 'github']))
+  sources: z.array(z.enum(['stackoverflow', 'github', 'reddit']))
     .optional()
-    .default(['stackoverflow', 'github'])
+    .default(['stackoverflow', 'github', 'reddit'])
     .describe('Which sources to search'),
   maxResults: z.number()
     .optional()
@@ -48,7 +48,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'gather_developer_context',
-        description: 'Gather comprehensive context from developer sources (Stack Overflow, GitHub) for a given query',
+        description: 'Gather comprehensive context from developer sources (Stack Overflow, GitHub, Reddit) for a given query',
         inputSchema: {
           type: 'object',
           properties: {
@@ -60,10 +60,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'array',
               items: {
                 type: 'string',
-                enum: ['stackoverflow', 'github'],
+                enum: ['stackoverflow', 'github', 'reddit'],
               },
               description: 'Which sources to search',
-              default: ['stackoverflow', 'github'],
+              default: ['stackoverflow', 'github', 'reddit'],
             },
             maxResults: {
               type: 'number',
@@ -97,7 +97,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Call the main function to gather context
     const result = await gatherDeveloperContext({
       query: args.query,
-      sources: args.sources as ('stackoverflow' | 'github')[],
+      sources: args.sources as ('stackoverflow' | 'github' | 'reddit')[],
       maxResults: args.maxResults,
       depth: args.depth as 'quick' | 'thorough',
     });

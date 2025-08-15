@@ -1,0 +1,60 @@
+{
+  "defaultSubreddits": [
+    "programming",
+    "javascript",
+    "typescript",
+    "node",
+    "webdev",
+    "reactjs",
+    "nextjs",
+    "angular",
+    "vuejs",
+    "learnprogramming",
+    "askprogramming",
+    "coding"
+  ],
+  "techMapping": {
+    "react": ["reactjs", "nextjs", "react_native"],
+    "typescript": ["typescript", "javascript"],
+    "javascript": ["javascript", "node", "webdev"],
+    "python": ["python", "learnpython", "django", "flask"],
+    "java": ["java", "javahelp", "learnjava"],
+    "docker": ["docker", "devops", "kubernetes"],
+    "kubernetes": ["kubernetes", "devops"],
+    "aws": ["aws", "devops", "cloudcomputing"],
+    "database": ["database", "sql", "mongodb", "postgresql"],
+    "git": ["git", "github"],
+    "vue": ["vuejs", "javascript"],
+    "angular": ["angular", "angularjs", "javascript"],
+    "nodejs": ["node", "javascript"],
+    "express": ["node", "expressjs", "javascript"],
+    "mongodb": ["mongodb", "database", "nosql"],
+    "postgresql": ["postgresql", "database", "sql"],
+    "mysql": ["mysql", "database", "sql"],
+    "rust": ["rust", "rustlang"],
+    "go": ["golang", "go"],
+    "golang": ["golang", "go"],
+    "c++": ["cpp", "cpp_questions"],
+    "csharp": ["csharp", "dotnet"],
+    "php": ["php", "phphelp", "laravel"],
+    "ruby": ["ruby", "rails", "rubyonrails"],
+    "swift": ["swift", "iosprogramming"],
+    "kotlin": ["kotlin", "androiddev"],
+    "android": ["androiddev", "kotlin", "java"],
+    "ios": ["iosprogramming", "swift"],
+    "flutter": ["flutterdev", "dart"],
+    "devops": ["devops", "sysadmin", "docker", "kubernetes"]
+  },
+  "qualityThresholds": {
+    "minScore": 5,
+    "minComments": 3,
+    "minUpvoteRatio": 0.7,
+    "maxAgeMonths": 24
+  },
+  "searchSettings": {
+    "maxSubredditsPerQuery": 5,
+    "defaultTimeWindow": "year",
+    "defaultSortBy": "relevance",
+    "resultsPerSubreddit": 10
+  }
+}

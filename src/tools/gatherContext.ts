@@ -1,6 +1,7 @@
 import { SearchOptions, GatherContextResult, NormalizedResult } from '../types/index.js';
 import { StackOverflowAdapter } from '../adapters/stackoverflow.js';
 import { GitHubRestAdapter } from '../adapters/github-rest.js';
+import { RedditAdapter } from '../adapters/reddit.js';
 import { ResultRanker } from '../core/ranker.js';
 import { ResultAggregator } from '../core/aggregator.js';
 import { LRUCache } from '../utils/cache.js';
@@ -12,9 +13,17 @@ const cache = new LRUCache<GatherContextResult>(
   parseInt(process.env.CACHE_TTL || '900')
 );
 
-// Initialize adapters
+// Initialize adapters (lazy initialization for Reddit)
 const stackOverflowAdapter = new StackOverflowAdapter();
 const githubAdapter = new GitHubRestAdapter();
+let redditAdapter: RedditAdapter | null = null;
+
+function getRedditAdapter(): RedditAdapter {
+  if (!redditAdapter) {
+    redditAdapter = new RedditAdapter();
+  }
+  return redditAdapter;
+}
 
 export async function gatherDeveloperContext(
   options: SearchOptions
@@ -24,7 +33,7 @@ export async function gatherDeveloperContext(
   // Check cache first
   const cacheKey = {
     query: options.query,
-    sources: options.sources || ['stackoverflow', 'github'],
+    sources: options.sources || ['stackoverflow', 'github', 'reddit'],
     maxResults: options.maxResults || 5,
     depth: options.depth || 'quick',
   };
@@ -41,7 +50,7 @@ export async function gatherDeveloperContext(
   console.log('Gathering context for query:', options.query);
 
   // Determine which sources to search
-  const sources = options.sources || ['stackoverflow', 'github'];
+  const sources = options.sources || ['stackoverflow', 'github', 'reddit'];
   const maxResults = options.maxResults || parseInt(process.env.MAX_RESULTS_PER_SOURCE || '5');
 
   // Search sources in parallel
@@ -74,6 +83,21 @@ export async function gatherDeveloperContext(
         incompleteSources.push('github');
         return [];
       })
+    );
+  }
+
+  if (sources.includes('reddit')) {
+    searchPromises.push(
+      getRedditAdapter().search(options.query, maxResults)
+        .then(results => {
+          console.log(`Reddit returned ${results.length} results`);
+          return results;
+        })
+        .catch(error => {
+          console.error('Reddit search failed:', error);
+          incompleteSources.push('reddit');
+          return [];
+        })
     );
   }
 

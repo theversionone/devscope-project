@@ -10,7 +10,7 @@ export interface CodeSnippet {
 export interface NormalizedResult {
   title: string;
   url: string;
-  source: 'stackoverflow' | 'github';
+  source: 'stackoverflow' | 'github' | 'reddit';
   author: string;
   createdAt: Date;
   updatedAt?: Date;
@@ -21,12 +21,14 @@ export interface NormalizedResult {
   version?: string;
   isAccepted?: boolean;
   voteCount?: number;
+  subreddit?: string;
+  upvoteRatio?: number;
 }
 
 export interface SearchOptions {
   query: string;
   maxResults?: number;
-  sources?: ('stackoverflow' | 'github')[];
+  sources?: ('stackoverflow' | 'github' | 'reddit')[];
   depth?: 'quick' | 'thorough';
   timeWindow?: {
     days?: number;
